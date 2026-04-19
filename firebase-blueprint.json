@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "college": {
+      "title": "College",
+      "description": "A college or university entity.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "location": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "overallRating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "categoryRatings": {
+          "type": "object",
+          "properties": {
+            "teaching": { "type": "number" },
+            "placement": { "type": "number" },
+            "life": { "type": "number" },
+            "hostel": { "type": "number" },
+            "crowd": { "type": "number" }
+          }
+        },
+        "currentModId": { "type": "string" }
+      },
+      "required": ["name", "slug"]
+    },
+    "review": {
+      "title": "Review",
+      "description": "An anonymous review of a college.",
+      "type": "object",
+      "properties": {
+        "collegeId": { "type": "string" },
+        "userId": { "type": "string" },
+        "headline": { "type": "string" },
+        "contentText": { "type": "string" },
+        "expectationVsReality": { "type": "string" },
+        "biggestScam": { "type": "string" },
+        "bestThing": { "type": "string" },
+        "rating": { "type": "number" },
+        "categoryRatings": {
+          "type": "object",
+          "properties": {
+            "teaching": { "type": "number" },
+            "placement": { "type": "number" },
+            "life": { "type": "number" },
+            "hostel": { "type": "number" },
+            "crowd": { "type": "number" }
+          }
+        },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "votes": { "type": "number" },
+        "upvotes": { "type": "number" },
+        "downvotes": { "type": "number" },
+        "reactions": {
+          "type": "object",
+          "properties": {
+            "skull": { "type": "number" },
+            "fire": { "type": "number" },
+            "laugh": { "type": "number" }
+          }
+        },
+        "status": { "type": "string", "enum": ["pending", "approved", "flagged"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["collegeId", "headline", "contentText", "rating"]
+    },
+    "poll": {
+      "title": "Poll",
+      "description": "A fun college comparison or battle poll.",
+      "type": "object",
+      "properties": {
+        "collegeId": { "type": "string" },
+        "question": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "votes": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "user": {
+      "title": "User Profile",
+      "description": "Public anonymous profile for a user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "anonymousName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "anonymousName"]
+    }
+  },
+  "firestore": {
+    "colleges": {
+      "schema": "college",
+      "description": "List of colleges available for review."
+    },
+    "reviews": {
+      "schema": "review",
+      "description": "Anonymous reviews posted by students."
+    },
+    "polls": {
+      "schema": "poll",
+      "description": "Engagement polls and battles."
+    },
+    "users": {
+      "schema": "user",
+      "description": "Anonymous user profiles."
+    }
+  }
+}

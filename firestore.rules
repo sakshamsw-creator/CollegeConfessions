@@ -1,0 +1,146 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() >= 1 && id.size() <= 128; }
+    
+    // Admin check - would require an 'admins' collection
+    function isAdmin() { 
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); 
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidCollege(data) {
+      return data.keys().hasAll(['name', 'slug', 'location', 'overallRating', 'reviewCount', 'categoryRatings', 'imageUrl']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.slug is string && data.slug.size() <= 200 &&
+             data.location is string && data.location.size() <= 200 &&
+             data.imageUrl is string && data.imageUrl.size() <= 500 &&
+             data.overallRating is number && data.overallRating >= 0 && data.overallRating <= 10 &&
+             data.reviewCount is int &&
+             data.categoryRatings is map &&
+             data.categoryRatings.teaching is number &&
+             data.categoryRatings.placement is number &&
+             data.categoryRatings.life is number &&
+             data.categoryRatings.hostel is number &&
+             data.categoryRatings.crowd is number &&
+             (!data.keys().contains('currentModId') || data.currentModId is string);
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['collegeId', 'userId', 'headline', 'contentText', 'expectationVsReality', 'biggestScam', 'bestThing', 'rating', 'categoryRatings', 'tags', 'votes', 'upvotes', 'downvotes', 'reactions', 'status', 'createdAt', 'isFoundingVoice']) &&
+             data.collegeId is string &&
+             data.userId == request.auth.uid &&
+             data.headline is string && data.headline.size() <= 200 &&
+             data.contentText is string && data.contentText.size() <= 5000 &&
+             data.expectationVsReality is string && data.expectationVsReality.size() <= 1000 &&
+             data.biggestScam is string && data.biggestScam.size() <= 1000 &&
+             data.bestThing is string && data.bestThing.size() <= 1000 &&
+             data.rating is number && data.rating >= 0 && data.rating <= 10 &&
+             data.categoryRatings is map &&
+             data.tags is list && data.tags.size() <= 20 &&
+             data.votes is int &&
+             data.upvotes is int &&
+             data.downvotes is int &&
+             data.reactions is map &&
+             data.isFoundingVoice is bool &&
+             data.status in ['pending', 'approved', 'flagged'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'anonymousName', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.anonymousName is string && data.anonymousName.size() <= 50 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidPoll(data) {
+      return data.keys().hasAll(['collegeId', 'question', 'options', 'type', 'createdAt']) &&
+             data.collegeId is string &&
+             data.question is string && data.question.size() <= 500 &&
+             data.type is string &&
+             data.options is list && data.options.size() >= 2 && data.options.size() <= 10 &&
+             data.createdAt == request.time;
+    }
+
+    // --- Matches ---
+
+    match /colleges/{collegeId} {
+      allow get: if true;
+      allow list: if true;
+      
+      // Allow creation (Open System) - AI moderated in frontend
+      allow create: if isValidId(collegeId) && isValidCollege(incoming());
+      
+      // Allow updates:
+      // 1. To ratings/reviewCount (by signed-in users when posting review)
+      // 2. To currentModId (system logic)
+      // 3. To image/location (by the current MOD)
+      allow update: if (
+        isSignedIn() && (
+          isAdmin() || 
+          (incoming().diff(existing()).affectedKeys().hasOnly(['overallRating', 'reviewCount', 'categoryRatings', 'currentModId'])) ||
+          (existing().currentModId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'location', 'name']))
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      // Browsing reviews
+      allow get: if true;
+      allow list: if true; // In production, we might want to enforce filters, but for "meme site" public feed is okay.
+      
+      // Creating a review
+      allow create: if isEmailVerified() && isValidId(reviewId) && isValidReview(incoming()) && 
+                    exists(/databases/$(database)/documents/colleges/$(incoming().collegeId));
+      
+      // Updating - only reactions and votes can be updated by others, or status by admin
+      allow update: if (
+        isEmailVerified() && (
+          // Action: React/Vote
+          (incoming().diff(existing()).affectedKeys().hasOnly(['reactions', 'votes'])) ||
+          // Action: Admin Moderation
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    match /polls/{pollId} {
+      allow read: if true;
+      // Allow any user to initialize a poll for a college
+      allow create: if isEmailVerified() && isValidId(pollId) && isValidPoll(incoming());
+      // Allow any signed-in user to vote
+      allow update: if isEmailVerified() && (
+        isAdmin() || 
+        (incoming().diff(existing()).affectedKeys().hasOnly(['options']))
+      );
+    }
+
+    match /users/{userId} {
+      allow read: if true; // Public profiles are anonymous
+      allow create: if isEmailVerified() && request.auth.uid == userId && isValidUser(incoming());
+      allow update: if isEmailVerified() && request.auth.uid == userId && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['anonymousName', 'photoURL'])
+      );
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
